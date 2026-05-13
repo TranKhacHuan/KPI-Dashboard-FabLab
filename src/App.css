@@ -1,0 +1,4 @@
+/* Cleaned up App.css to avoid layout conflicts */
+#root {
+  width: 100%;
+}
