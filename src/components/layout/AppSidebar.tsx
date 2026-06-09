@@ -1,4 +1,4 @@
-import { LayoutDashboard, ListChecks, CheckCircle2, BarChart3, Users, Sparkles } from "lucide-react";
+import { LayoutDashboard, ListChecks, CheckCircle2, BarChart3, Users } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -12,7 +12,30 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useAppStore } from "@/store/app-store";
+import { useAppStore, type Role } from "@/store/app-store";
+
+interface NavItem {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const navConfig: Record<Role, NavItem[]> = {
+  member: [
+    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
+    { title: "Task của tôi", url: "/my-tasks", icon: ListChecks },
+  ],
+  leader: [
+    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
+    { title: "Task của tôi", url: "/my-tasks", icon: ListChecks },
+    { title: "Duyệt task", url: "/approvals", icon: CheckCircle2 },
+    { title: "Giao việc", url: "/assign", icon: Users },
+  ],
+  manager: [
+    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
+    { title: "Báo cáo", url: "/reports", icon: BarChart3 },
+  ],
+};
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -21,27 +44,8 @@ export function AppSidebar() {
   const currentUser = useAppStore((s) => s.users.find((u) => u.id === s.currentUserId));
   if (!currentUser) return null;
 
+  const items = navConfig[currentUser.role];
   const isActive = (p: string) => pathname === p;
-
-  const memberItems = [
-    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
-    { title: "Task của tôi", url: "/my-tasks", icon: ListChecks },
-  ];
-  const leaderItems = [
-    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
-    { title: "Task của tôi", url: "/my-tasks", icon: ListChecks },
-    { title: "Duyệt task", url: "/approvals", icon: CheckCircle2 },
-    { title: "Giao việc", url: "/assign", icon: Users },
-  ];
-  const managerItems = [
-    { title: "Tổng quan", url: "/", icon: LayoutDashboard },
-    { title: "Báo cáo", url: "/reports", icon: BarChart3 },
-  ];
-
-
-
-  const items =
-    currentUser.role === "manager" ? managerItems : currentUser.role === "leader" ? leaderItems : memberItems;
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">

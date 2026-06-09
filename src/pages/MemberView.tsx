@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Plus, ListChecks, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { TaskDialog } from "@/components/tasks/TaskDialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TimeRangeFilter } from "@/components/filters/TimeRangeFilter";
+import { useFilteredTasks } from "@/hooks/useFilteredTasks";
+import { useCurrentUser } from "@/hooks/useUser";
 
 export default function MemberView({ path }: { path: string }) {
-  console.log("Rendering MemberView, path:", path);
-  const { tasks, currentUserId, users } = useAppStore();
-  const me = users.find((u) => u.id === currentUserId)!;
+  const { currentUserId } = useAppStore();
+  const me = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   const [year, setYear] = useState<number>(new Date().getFullYear());
@@ -22,14 +23,7 @@ export default function MemberView({ path }: { path: string }) {
     else setActiveTab("all");
   }, [path]);
 
-  const myTasks = useMemo(
-    () => tasks.filter((t) => 
-      (t.nguoiThucHien === currentUserId || t.nguoiTao === currentUserId) && 
-      t.nam === year && 
-      (quarter === "all" || String(t.quy) === quarter)
-    ),
-    [tasks, currentUserId, year, quarter]
-  );
+  const myTasks = useFilteredTasks({ userId: currentUserId, year, quarter });
 
   const counts = useMemo(() => {
     const c = { chua_duyet: 0, cho_duyet: 0, duoc_duyet: 0, hoan_thanh: 0, khong_chap_thuan: 0 };
@@ -37,8 +31,8 @@ export default function MemberView({ path }: { path: string }) {
     return c;
   }, [myTasks]);
 
-  const filterByStatus = (key?: string) =>
-    key && key !== "all" ? myTasks.filter((t) => t.trangThai === key) : myTasks;
+  const filterByStatus = (key: string) =>
+    key !== "all" ? myTasks.filter((t) => t.trangThai === key) : myTasks;
 
   return (
     <div className="space-y-8">
@@ -51,23 +45,12 @@ export default function MemberView({ path }: { path: string }) {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
-            <SelectTrigger className="w-[100px] h-11"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {[year - 1, year, year + 1].map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={quarter} onValueChange={setQuarter}>
-            <SelectTrigger className="w-[130px] h-11"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tất cả quý</SelectItem>
-              <SelectItem value="1">Quý 1</SelectItem>
-              <SelectItem value="2">Quý 2</SelectItem>
-              <SelectItem value="3">Quý 3</SelectItem>
-              <SelectItem value="4">Quý 4</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button size="lg" onClick={() => setOpen(true)} className="bg-gradient-primary text-primary-foreground shadow-elegant hover:opacity-90 ml-auto md:ml-0">
+          <TimeRangeFilter year={year} quarter={quarter} onYearChange={setYear} onQuarterChange={setQuarter} />
+          <Button
+            size="lg"
+            onClick={() => setOpen(true)}
+            className="bg-gradient-primary text-primary-foreground shadow-elegant hover:opacity-90 ml-auto md:ml-0"
+          >
             <Plus className="h-4 w-4 mr-2" /> Tạo task mới
           </Button>
         </div>

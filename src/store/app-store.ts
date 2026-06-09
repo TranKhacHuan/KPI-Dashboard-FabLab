@@ -1,6 +1,7 @@
 import { create } from "zustand";
-
-const API_URL = "https://script.google.com/macros/s/AKfycbzrvI9lS7QKZPPO8dWiL6IXnNgJydVv-C-KLAhzuuJMLJ1Q2Br-XthB1Y12wx78gGACfw/exec";
+import { apiRequest } from "@/api/client";
+import { iso, quarterOf } from "@/utils/dateUtils";
+import { generateTaskId } from "@/utils/taskUtils";
 
 export type Role = "member" | "leader" | "manager";
 export type Department = "Kỹ thuật" | "STEM" | "Tất cả";
@@ -29,12 +30,6 @@ export interface Task {
   nam: number;
 }
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-const quarterOf = (date: string): 1 | 2 | 3 | 4 => {
-  const m = new Date(date).getMonth() + 1;
-  return Math.ceil(m / 3) as 1 | 2 | 3 | 4;
-};
-
 interface AppState {
   users: User[];
   tasks: Task[];
@@ -51,38 +46,6 @@ interface AppState {
   completeTask: (maCV: string) => Promise<void>;
 }
 
-// Helper for Google Apps Script requests
-async function apiRequest(params: any, method: "GET" | "POST" = "GET") {
-  const url = new URL(API_URL);
-
-  if (method === "GET") {
-    Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      mode: "cors",
-      redirect: "follow",
-    });
-    if (!response.ok) throw new Error("Network response was not ok");
-    return response.json();
-  } else {
-    // POST request using form data to ensure compatibility with Apps Script doPost(e.parameter)
-    const formData = new URLSearchParams();
-    Object.keys(params).forEach(key => formData.append(key, params[key]));
-
-    const response = await fetch(API_URL, {
-      method: "POST",
-      mode: "cors",
-      redirect: "follow",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: formData.toString(),
-    });
-    if (!response.ok) throw new Error("Network response was not ok");
-    return response.json();
-  }
-}
-
 export const useAppStore = create<AppState>((set, get) => ({
   users: [],
   tasks: [],
@@ -94,11 +57,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchData: async () => {
     set({ isLoading: true });
     try {
-      const data = await apiRequest({ action: "getData" }, "GET");
+      const data = await apiRequest({ action: "getData" }, "GET") as { users: User[]; tasks: Task[] };
       set({
         users: data.users || [],
         tasks: data.tasks || [],
-        isLoading: false
+        isLoading: false,
       });
     } catch (error) {
       console.error("Failed to fetch data:", error);
@@ -109,11 +72,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   createTask: async (t) => {
     set({ isLoading: true });
     const ngayTao = iso(new Date());
-    const prefix = t.tenPB === "Kỹ thuật" ? "KT" : "ST";
     const idx = get().tasks.filter((x) => x.tenPB === t.tenPB).length + 1;
-    const maCV = `${prefix}-${String(idx).padStart(3, "0")}`;
+    const maCV = generateTaskId(t.tenPB, idx);
 
-    const data = {
+    const data: Task = {
       ...t,
       maCV,
       ngayTao,
@@ -124,7 +86,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await apiRequest({ action: "createTask", data: JSON.stringify(data) }, "POST");
-      set({ tasks: [data as Task, ...get().tasks], isLoading: false });
+      set({ tasks: [data, ...get().tasks], isLoading: false });
     } catch (error) {
       console.error("Failed to create task:", error);
       set({ isLoading: false });
@@ -136,9 +98,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true });
     try {
       await apiRequest({ action: "updateTask", maCV, data: JSON.stringify(patch) }, "POST");
-      set({ 
-        tasks: get().tasks.map((t) => (t.maCV === maCV ? { ...t, ...patch } : t)), 
-        isLoading: false 
+      set({
+        tasks: get().tasks.map((t) => (t.maCV === maCV ? { ...t, ...patch } : t)),
+        isLoading: false,
       });
     } catch (error) {
       console.error("Failed to update task:", error);
@@ -151,9 +113,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isLoading: true });
     try {
       await apiRequest({ action: "deleteTask", maCV }, "POST");
-      set({ 
-        tasks: get().tasks.filter((t) => t.maCV !== maCV), 
-        isLoading: false 
+      set({
+        tasks: get().tasks.filter((t) => t.maCV !== maCV),
+        isLoading: false,
       });
     } catch (error) {
       console.error("Failed to delete task:", error);
@@ -165,7 +127,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   approveTask: async (maCV) => {
     await get().updateTask(maCV, {
       trangThai: "duoc_duyet",
-      ngayDuyet: iso(new Date())
+      ngayDuyet: iso(new Date()),
     });
   },
 
@@ -196,9 +158,4 @@ export const statusTone: Record<TaskStatus, string> = {
   duoc_duyet: "bg-primary/10 text-primary border-primary/20",
   khong_chap_thuan: "bg-destructive/10 text-destructive border-destructive/20",
   hoan_thanh: "bg-success/15 text-success border-success/30",
-};
-
-export const userById = (id: string) => {
-  const users = useAppStore.getState().users;
-  return users.find((u) => u.id === id);
 };

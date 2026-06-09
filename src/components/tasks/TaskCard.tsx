@@ -2,11 +2,13 @@ import { Calendar, Building2, User, Pencil, Trash2, Send, CheckCircle2, Loader2 
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAppStore, statusLabel, statusTone, userById, type Task } from "@/store/app-store";
+import { useAppStore, statusLabel, statusTone, type Task } from "@/store/app-store";
 import { format } from "date-fns";
-import { toast } from "sonner";
 import { useState } from "react";
 import { TaskDialog } from "./TaskDialog";
+import { getTaskPermissions } from "@/utils/taskPermissions";
+import { useUser, useCurrentUser } from "@/hooks/useUser";
+import { useTaskAction } from "@/hooks/useTaskAction";
 
 interface Props {
   task: Task;
@@ -15,62 +17,20 @@ interface Props {
 }
 
 export function TaskCard({ task, showAssignee = true, showActions = true }: Props) {
-  const { users, currentUserId, deleteTask, submitForApproval, completeTask } = useAppStore();
-  const me = users.find((u) => u.id === currentUserId)!;
-  const isOwner = task.nguoiThucHien === currentUserId || task.nguoiTao === currentUserId;
-  const isCreator = task.nguoiTao === currentUserId;
-  
-  // Leader/Manager có quyền xóa/sửa task trong phòng ban mình (trừ khi đã hoàn thành)
-  const isPrivileged = (me.role === "leader" || me.role === "manager") && (me.department === "Tất cả" || task.tenPB === me.department);
-  
-  const canDelete = isPrivileged; // Member không được xóa task, kể cả task mình tạo
-  const editable = (isPrivileged || (isOwner && task.trangThai === "chua_duyet")) && task.trangThai !== "hoan_thanh";
-  
-  const canSubmit = isOwner && task.trangThai === "chua_duyet" && me.role === "member";
-  const canComplete = isOwner && task.trangThai === "duoc_duyet";
+  const { deleteTask, submitForApproval, completeTask } = useAppStore();
+  const me = useCurrentUser();
+  const assignee = useUser(task.nguoiThucHien);
+  const creator = useUser(task.nguoiTao);
+
+  const { canEdit, canDelete, canSubmit, canComplete } = getTaskPermissions(task, me);
 
   const [editing, setEditing] = useState(false);
 
-  const assignee = userById(task.nguoiThucHien);
-  const creator = userById(task.nguoiTao);
+  const deleteAction = useTaskAction(deleteTask, { success: "Đã xóa task!", error: "Không thể xóa task." });
+  const submitAction = useTaskAction(submitForApproval, { success: "Đã gửi yêu cầu duyệt!", error: "Lỗi khi gửi duyệt." });
+  const completeAction = useTaskAction(completeTask, { success: "Đã hoàn thành task!", error: "Lỗi khi cập nhật." });
 
-  const [actionLoading, setActionLoading] = useState<"delete" | "submit" | "complete" | null>(null);
-
-  const handleDelete = async () => {
-    setActionLoading("delete");
-    try {
-      await deleteTask(task.maCV);
-      toast("Đã xóa task!");
-    } catch (e) {
-      toast("Không thể xóa task.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setActionLoading("submit");
-    try {
-      await submitForApproval(task.maCV);
-      toast("Đã gửi yêu cầu duyệt!");
-    } catch (e) {
-      toast("Lỗi khi gửi duyệt.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleComplete = async () => {
-    setActionLoading("complete");
-    try {
-      await completeTask(task.maCV);
-      toast("Đã hoàn thành task!");
-    } catch (e) {
-      toast("Lỗi khi cập nhật.");
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  const isLoading = deleteAction.loading || submitAction.loading || completeAction.loading;
 
   return (
     <>
@@ -110,26 +70,57 @@ export function TaskCard({ task, showAssignee = true, showActions = true }: Prop
           )}
         </div>
 
-        {showActions && (editable || canDelete || canSubmit || canComplete) && (
+        {showActions && (canEdit || canDelete || canSubmit || canComplete) && (
           <div className="mt-4 flex flex-wrap gap-2 pt-3 border-t border-border">
-            {editable && (
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={!!actionLoading}>
+            {canEdit && (
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)} disabled={isLoading}>
                 <Pencil className="h-3.5 w-3.5 mr-1" /> Sửa
               </Button>
             )}
             {canDelete && (
-              <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={handleDelete} disabled={!!actionLoading}>
-                {actionLoading === "delete" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1" />} Xóa
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-destructive hover:text-destructive"
+                onClick={() => deleteAction.execute(task.maCV)}
+                disabled={isLoading}
+              >
+                {deleteAction.loading ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                )}{" "}
+                Xóa
               </Button>
             )}
             {canSubmit && (
-              <Button size="sm" onClick={handleSubmit} disabled={!!actionLoading} className="bg-gradient-primary text-primary-foreground">
-                {actionLoading === "submit" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1" />} Gửi duyệt
+              <Button
+                size="sm"
+                onClick={() => submitAction.execute(task.maCV)}
+                disabled={isLoading}
+                className="bg-gradient-primary text-primary-foreground"
+              >
+                {submitAction.loading ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5 mr-1" />
+                )}{" "}
+                Gửi duyệt
               </Button>
             )}
             {canComplete && (
-              <Button size="sm" onClick={handleComplete} disabled={!!actionLoading} className="bg-success/90 hover:bg-success text-white">
-                {actionLoading === "complete" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />} Đánh dấu hoàn thành
+              <Button
+                size="sm"
+                onClick={() => completeAction.execute(task.maCV)}
+                disabled={isLoading}
+                className="bg-success/90 hover:bg-success text-white"
+              >
+                {completeAction.loading ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                )}{" "}
+                Đánh dấu hoàn thành
               </Button>
             )}
           </div>
